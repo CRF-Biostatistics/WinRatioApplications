@@ -1,108 +1,168 @@
+# Requires the 'survival', and 'binom' packages
+# install.packages(c("binom", "survival"), dependencies = TRUE)
 require("survival")
 require("binom")
-library(survival)
-library("binom")
 
-#Creating a function to simulate power from using a Cox proportional hazards model on joint frailty data
-power_CoxFrailty<-function(n.start=NULL,fu.start, power=0.8,alpha=0.05, n.sim=1000, n.iter=3, 
-                           p.active=0.5, hr.death, hr.hfh, rate.control.d, rate.control.hfh, 
-                  frailty.scale=0, frailty.exponent=0, composite=TRUE) {
-  
+###############################################################################
+
+# The following functions estimate the statistical power for a composite
+# endpoint under the joint frailty model to be analyzed using a Cox
+# proportional hazards regression model.
+
+###############################################################################
+
+
+## Main function to perform power calculations for the Win Ratio by performing
+# Monte Carlo simulations from joint frailty data
+power_CoxFrailty <-
+  # n.start = number of patients in the initial simulation
+  # numeric vector of follow-up times for each patient in the initial simulation
+  # power = target power desired
+  # alpha = type I error rate as a numeric decimal (i.e. 0.05 for 5%)
+  # n.sim = number of simulations to perform for each iteration
+  # n.iter = number of iterations
+  # p.active = proportion of treatment vs. control patients (entered as a decimal; see stats::rbinom)
+  # hr.death = hazard ratio between treatment vs. control for death
+  # hr.hfh = hazard ratio between treatment vs. control for recurrent heart failure hospitalizations
+  # rate.control.d = control hazard rate for death
+  # rate.control.hfh = control hazard rate for heart failure hospitalizations
+# frailty.scale = scale parameter for the joint frailty link
+# frailty.exponent = exponent of the joint frailty link
+# composite = convert the endpoint to a composite
+function(n.start = NULL,
+         fu.start,
+         power = 0.8,
+         alpha = 0.05,
+         n.sim = 1000,
+         n.iter = 3,
+         p.active = 0.5,
+         hr.death,
+         hr.hfh,
+         rate.control.d,
+         rate.control.hfh,
+         frailty.scale = 0,
+         frailty.exponent = 0,
+         composite = TRUE) {
   #Generating sensible starting values where none are given
-   if(is.null(n.start)) {
-    n.start<-500
+  if (is.null(n.start)) {
+    n.start <- 500
   }
   
   #Generating z-statistics
-  z_power<-qnorm(power)
-  z_alpha_desired<-qnorm(1-alpha/2)
+  z_power <- qnorm(power)
+  z_alpha_desired <- qnorm(1 - alpha / 2)
   
   #Setting starting number of observations, and censoring distribution for first iteration
-  n.obs<-n.start
-  length.fu<-fu.start 
+  n.obs <- n.start
+  length.fu <- fu.start
   
-   
-  for(iter in 1:n.iter) {
+  for (iter in 1:n.iter) {
     print(paste("Iteration", iter))
-    logHR<-vector(length=n.sim)
-    logHR_se<-vector(length=n.sim)
-    is.sig<-vector(length=n.sim) 
-    z<-vector(length=n.sim) 
-    p<-vector(length=n.sim) 
-  	
-	  for(i in 1:n.sim) {
-  	  jf_data<-simulateJF(n.obs=n.obs, p.active=p.active, hr.death=hr.death, hr.hfh=hr.hfh, 
-                          rate.control.d=rate.control.d, rate.control.hfh=rate.control.hfh, 
-                          length.fu=length.fu, frailty.scale=frailty.scale, frailty.exponent=frailty.exponent)
-      
-  	  #Grabbing HFH data and time to censoring
-  	  t_hfh<-slot(jf_data, "t_hfh")[,1]
-  	  t_hfh[t_hfh==Inf]<-slot(jf_data, "t_death")[t_hfh==Inf]
-  	  t_hfh[t_hfh==Inf]<-slot(jf_data, "followup")[t_hfh==Inf]
-  	  hfh<-vector(length=n.obs)
-  	  hfh<-slot(jf_data, "indiv_hfh")
-  	  hfh[hfh>1]<-1
-
-	  #Make it a composite outcome if specified
-	  	if(composite==TRUE) {
-		hfh[slot(jf_data, "death")==1]<-1
-		}	 
-  	  
-	  #Running Cox model and grabbing the relevant statistics 
-  	  cox<-summary(coxph(Surv(time=t_hfh, event=hfh)~slot(jf_data, "treatment")))
-  	  p[i]<-cox$coefficients[5]
-  	  logHR[i]<-cox$coefficients[1]
-  	  logHR_se[i]<-cox$coefficients[3]
-  	  is.sig[i]<-(p[i]<0.05)
-  	  z[i]<-cox$coefficients[4]
-  	  }
+    logHR <- vector(length = n.sim)
+    logHR_se <- vector(length = n.sim)
+    is.sig <- vector(length = n.sim)
+    z <- vector(length = n.sim)
+    p <- vector(length = n.sim)
     
-	
-    beta<-1-power
-
+    for (i in 1:n.sim) {
+      jf_data <-
+        simulateJF(
+          n.obs = n.obs,
+          p.active = p.active,
+          hr.death = hr.death,
+          hr.hfh = hr.hfh,
+          rate.control.d = rate.control.d,
+          rate.control.hfh = rate.control.hfh,
+          length.fu = length.fu,
+          frailty.scale = frailty.scale,
+          frailty.exponent = frailty.exponent
+        )
+      
+      #Grabbing HFH data and time to censoring
+      t_hfh <- slot(jf_data, "t_hfh")[, 1]
+      t_hfh[t_hfh == Inf] <- slot(jf_data, "t_death")[t_hfh == Inf]
+      t_hfh[t_hfh == Inf] <- slot(jf_data, "followup")[t_hfh == Inf]
+      hfh <- vector(length = n.obs)
+      hfh <- slot(jf_data, "indiv_hfh")
+      hfh[hfh > 1] <- 1
+      
+      #Make it a composite outcome if specified
+      if (composite == TRUE) {
+        hfh[slot(jf_data, "death") == 1] <- 1
+      }
+      
+      #Running Cox model and grabbing the relevant statistics
+      cox <-
+        summary(coxph(Surv(time = t_hfh, event = hfh) ~ slot(jf_data, "treatment")))
+      p[i] <- cox$coefficients[5]
+      logHR[i] <- cox$coefficients[1]
+      logHR_se[i] <- cox$coefficients[3]
+      is.sig[i] <- (p[i] < 0.05)
+      z[i] <- cox$coefficients[4]
+    }
+    
+    beta <- 1 - power
+    
     #Idenfitying observed alpha at required level of statistical power
-    z_alpha_obs<-quantile(abs(z), beta)
-
-    #Estimating required N based on required power, observed alpha above, and formula above 
-    print(paste("Z-statistic at 1-power (", beta, ")=",round(z_alpha_obs, digits=2)))
-    print(paste("Z- desired=", round(z_alpha_desired, digits=2)))
-    required_n<-n.obs*(z_alpha_desired+z_power)^2 / (z_power+z_alpha_obs)^2
-    required_n<-round(required_n)
+    z_alpha_obs <- quantile(abs(z), beta)
+    
+    #Estimating required N based on required power, observed alpha above, and formula above
+    print(paste(
+      "Z-statistic at 1-power (",
+      beta,
+      ")=",
+      round(z_alpha_obs, digits = 2)
+    ))
+    print(paste("Z- desired=", round(z_alpha_desired, digits = 2)))
+    required_n <-
+      n.obs * (z_alpha_desired + z_power) ^ 2 / (z_power + z_alpha_obs) ^ 2
+    required_n <- round(required_n)
     
     #Relaying adaptation of sample size back to user
-    current_power<-mean(is.sig)
-    current_z<-qnorm(current_power)
-    print(paste("Iteration", iter, "Power:" , current_power, "N", n.obs, "Estimated required:", required_n))
+    current_power <- mean(is.sig)
+    current_z <- qnorm(current_power)
+    print(
+      paste(
+        "Iteration",
+        iter,
+        "Power:" ,
+        current_power,
+        "N",
+        n.obs,
+        "Estimated required:",
+        required_n
+      )
+    )
     
-    #Redefining inputs for joint frailty simulations based on updated sapmle size
-    n.obs_old<-n.obs
-    n.obs<-required_n
-    length.fu<-sample(fu.start, size=n.obs, replace=TRUE)
+    #Redefining inputs for joint frailty simulations based on updated sample size
+    n.obs_old <- n.obs
+    n.obs <- required_n
+    length.fu <- sample(fu.start, size = n.obs, replace = TRUE)
     
-    if(required_n>30000) {
+    if (required_n > 30000) {
       stop("Required sample size too large to run simulations")
     }
     
-    #Displaing final information for user 
-    if(iter==n.iter) {
-      power_ci<-binom.confint(sum(is.sig),n.sim, method="exact")
-      power_ci<-binom.confint(sum(is.sig),n.sim, method="exact")
-      print(paste("95% CI for power with n=", n.obs_old ,":", power_ci$lower, power_ci$upper))
+    #Displaying final information for user
+    if (iter == n.iter) {
+      power_ci <- binom.confint(sum(is.sig), n.sim, method = "exact")
+      power_ci <- binom.confint(sum(is.sig), n.sim, method = "exact")
+      print(paste(
+        "95% CI for power with n=",
+        n.obs_old ,
+        ":",
+        power_ci$lower,
+        power_ci$upper
+      ))
       print(paste("Refined estimate (not simulated)", n.obs))
     }
     
   }
   
   #Preparing output, simply required N here
-  mean_HR<-exp(mean(logHR))
-  print(paste("Mean marginal HR", round(mean_HR, digits=2) ))
-  output<-required_n 
+  mean_HR <- exp(mean(logHR))
+  print(paste("Mean marginal HR", round(mean_HR, digits = 2)))
+  output <- required_n
   return(output)
+  
 }
-
-
-
-
-
-
-
